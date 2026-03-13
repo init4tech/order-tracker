@@ -1,0 +1,23 @@
+[package]
+name = "signet-tracker"
+description = "Order lifecycle tracking and diagnostics for Signet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+signet-constants.workspace = true
+signet-orders.workspace = true
+signet-tx-cache.workspace = true
+signet-types.workspace = true
+signet-zenith.workspace = true
+
+alloy.workspace = true
+futures-util.workspace = true
+jiff.workspace = true
+tokio.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

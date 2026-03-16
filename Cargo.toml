@@ -21,7 +21,7 @@ signet-zenith = "0.16.0-rc.13"
 init4-bin-base = "0.18.0-rc.12"
 
 alloy = { version = "1.6.1", features = ["full"] }
-axum = { version = "0.8.8", features = ["json"] }
+axum = { version = "0.8.8", features = ["json", "ws"] }
 
 backon = { version = "1.6.0", features = ["tokio-sleep"] }
 eyre = "0.6.12"
@@ -32,7 +32,6 @@ itertools = "0.14.0"
 reqwest = "0.12.28"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-thiserror = "2.0.18"
 tokio = { version = "1.50.0", features = ["full", "macros", "rt-multi-thread", "signal"] }
 tokio-util = "0.7.18"
 tracing = "0.1.44"

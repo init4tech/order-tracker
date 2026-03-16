@@ -23,18 +23,24 @@ mod error;
 pub use error::Error;
 
 mod order_status;
-pub use order_status::{Chain, ChainTransaction, FillInfo, FillOutput, OrderReport, OrderStatus};
+pub use order_status::{Chain, ChainTransaction, FillInfo, FillOutput, OrderStatus};
 
 mod order_diagnostics;
 pub use order_diagnostics::{
-    AllowanceCheck, BalanceCheck, DeadlineCheck, OrderDiagnostics, TokenAllowance, TokenBalance,
+    AllowanceCheck, AllowanceChecks, BalanceCheck, BalanceChecks, DeadlineCheck, MaybeBool,
+    OrderDiagnostics,
 };
 
 mod order_tracker;
 pub use order_tracker::OrderTracker;
 
+mod pretty_duration;
+pub use pretty_duration::PrettyDuration;
+
 mod timestamp;
 pub use timestamp::Timestamp;
 
 mod fill_search;
+pub use fill_search::fill_outputs_are_superset_of_order_outputs;
+
 mod token_symbol_cache;

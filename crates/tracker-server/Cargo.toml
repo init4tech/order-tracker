@@ -15,6 +15,8 @@ path = "src/main.rs"
 signet-tracker.workspace = true
 signet-constants.workspace = true
 signet-tx-cache.workspace = true
+signet-types.workspace = true
+signet-zenith.workspace = true
 
 init4-bin-base.workspace = true
 
@@ -22,6 +24,7 @@ alloy.workspace = true
 axum.workspace = true
 backon.workspace = true
 eyre.workspace = true
+futures-util.workspace = true
 git-version.workspace = true
 itertools.workspace = true
 reqwest.workspace = true

@@ -1,5 +1,5 @@
 use core::fmt;
-use serde::Serialize;
+use serde::{Serialize, ser::SerializeStruct};
 
 /// A unix timestamp (seconds) that serializes with both the raw integer and an ISO 8601 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -34,9 +34,8 @@ impl fmt::Display for Timestamp {
 
 impl Serialize for Timestamp {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("Timestamp", 2)?;
-        state.serialize_field("secs", &self.0)?;
+        state.serialize_field("secs_since_epoch", &self.0)?;
         let human = match jiff::Timestamp::from_second(self.0 as i64) {
             Ok(ts) => ts.to_string(),
             Err(_) => format!("{}s", self.0),

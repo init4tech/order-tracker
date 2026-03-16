@@ -6,7 +6,7 @@ use alloy::{
 };
 use signet_types::SignedOrder;
 use signet_zenith::RollupOrders;
-use tracing::{instrument, trace};
+use tracing::{instrument, trace, warn};
 
 use crate::{
     Error,
@@ -78,12 +78,16 @@ pub(crate) async fn find_fill_events<P: Provider>(
         let Some(tx_hash) = log.transaction_hash else { continue };
         let Some(block_number) = log.block_number else { continue };
 
-        let Ok(decoded) = RollupOrders::Filled::decode_log(&Log::new_unchecked(
+        let decoded = match RollupOrders::Filled::decode_log(&Log::new_unchecked(
             log.address(),
             log.topics().to_vec(),
             log.data().data.clone(),
-        )) else {
-            continue;
+        )) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                warn!(%tx_hash, block_number, %error, "failed to decode Filled event");
+                continue;
+            }
         };
 
         trace!(
@@ -157,12 +161,16 @@ pub(crate) async fn find_order_initiation<P: Provider>(
         let Some(block_number) = log.block_number else { continue };
         let Some(tx_hash) = log.transaction_hash else { continue };
 
-        let Ok(decoded) = RollupOrders::Order::decode_log(&Log::new_unchecked(
+        let decoded = match RollupOrders::Order::decode_log(&Log::new_unchecked(
             log.address(),
             log.topics().to_vec(),
             log.data().data.clone(),
-        )) else {
-            continue;
+        )) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                warn!(%tx_hash, block_number, %error, "failed to decode Order event");
+                continue;
+            }
         };
 
         if decoded.deadline == deadline {
@@ -180,7 +188,7 @@ pub(crate) async fn find_order_initiation<P: Provider>(
 ///
 /// `chainId` is intentionally excluded from comparison: the order specifies the desired output
 /// chain, but the fill event records the chain it was executed on, which may differ.
-fn fill_outputs_are_superset_of_order_outputs(
+pub fn fill_outputs_are_superset_of_order_outputs(
     fill_outputs: &[RollupOrders::Output],
     order_outputs: &[RollupOrders::Output],
 ) -> bool {

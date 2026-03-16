@@ -19,5 +19,4 @@ futures-util.workspace = true
 jiff.workspace = true
 tokio.workspace = true
 serde.workspace = true
-thiserror.workspace = true
 tracing.workspace = true

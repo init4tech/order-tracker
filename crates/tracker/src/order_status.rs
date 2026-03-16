@@ -1,37 +1,52 @@
 use crate::{Amount, order_diagnostics::OrderDiagnostics};
 use alloy::primitives::{Address, B256};
 use serde::Serialize;
-
-/// Combined status and diagnostics for a tracked order.
-#[derive(Debug, Clone, Serialize)]
-pub struct OrderReport {
-    /// The resolved lifecycle status.
-    pub status: OrderStatus,
-    /// Diagnostic details from all checks performed.
-    pub diagnostics: OrderDiagnostics,
-}
+use std::fmt::{self, Display, Formatter};
 
 /// The resolved lifecycle status of a Signet order.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum OrderStatus {
-    /// Order is pending: found in the transaction cache, the Permit2 nonce has not been consumed,
-    /// and the deadline has not passed.
+    /// Order is pending: the Permit2 nonce has not been consumed, and the deadline has not passed.
     Pending {
-        /// Seconds remaining until the order's deadline.
-        seconds_remaining: u64,
+        /// The order hash.
+        order_hash: B256,
+        /// Diagnostics for the order.
+        #[serde(flatten)]
+        diagnostics: OrderDiagnostics,
     },
     /// Order has been filled: the Permit2 nonce has been consumed on-chain.
     Filled {
+        /// The order hash.
+        order_hash: B256,
         /// Details about the fill transaction, if located. `None` if the fill event could not be
         /// correlated to a specific transaction.
         fill_info: Option<FillInfo>,
     },
     /// Order expired: the deadline has passed and the Permit2 nonce was not consumed.
     Expired {
-        /// How long ago the deadline passed, in seconds.
-        expired_ago: u64,
+        /// The order hash.
+        order_hash: B256,
+        /// Diagnostics for the order.
+        #[serde(flatten)]
+        diagnostics: OrderDiagnostics,
     },
+}
+
+impl OrderStatus {
+    /// The order hash for this status.
+    pub const fn order_hash(&self) -> B256 {
+        match self {
+            Self::Pending { order_hash, .. }
+            | Self::Filled { order_hash, .. }
+            | Self::Expired { order_hash, .. } => *order_hash,
+        }
+    }
+
+    /// Whether this is a terminal state (filled or expired).
+    pub const fn is_terminal(&self) -> bool {
+        matches!(self, Self::Filled { .. } | Self::Expired { .. })
+    }
 }
 
 /// Which chain a transaction was observed on.
@@ -42,6 +57,22 @@ pub enum Chain {
     Rollup,
     /// The host (L1) chain.
     Host,
+}
+
+impl Chain {
+    /// Returns the chain name as a string slice.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rollup => "rollup",
+            Self::Host => "host",
+        }
+    }
+}
+
+impl Display for Chain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
 }
 
 /// A transaction hash with the chain it was observed on.

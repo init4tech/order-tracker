@@ -9,20 +9,35 @@ Cargo workspace for tracking the lifecycle and diagnosing fill failures of Signe
 ```
 Cargo.toml - Workspace root (members: crates/*)
 
-crates/tracker/ - signet-tracker: pure tracking library (no IO, no server deps)
+crates/tracker/ - signet-tracker: tracking library (on-chain queries via Provider trait)
   src/lib.rs - Library root, module exports
-  src/error.rs - Error enum (thiserror, #[from] conversions)
-  src/order_status.rs - OrderReport, OrderStatus enum (Pending, Filled, Expired), and FillInfo
-  src/order_diagnostics.rs - OrderDiagnostics report with per-check result types
-  src/order_tracker.rs - OrderTracker<RuP, HostP>: single public entry point (`status`)
+  src/error.rs - Error enum (manual Display with alt-formatting source chain, manual Error impl)
+  src/order_status.rs - OrderStatus enum (Pending/Filled/Expired with embedded order_hash + diagnostics), FillInfo, FillOutput, Chain
+  src/order_diagnostics.rs - OrderDiagnostics, DeadlineCheck, AllowanceChecks, BalanceChecks, MaybeBool
+  src/order_tracker.rs - OrderTracker<RuP, HostP>: status(), status_for_order(), check_*, find_fill()
   src/fill_search.rs - Filled event scanning, output matching, ERC-20 balance/allowance queries
+  src/amount.rs - Amount wrapper (U256 + decimal string serialization)
+  src/timestamp.rs - Timestamp wrapper (unix secs + ISO 8601 serialization via jiff)
+  src/pretty_duration.rs - PrettyDuration wrapper (ISO 8601 duration serialization via jiff)
+  src/token_symbol_cache.rs - RwLock cache resolving token addresses to symbols (constants + on-chain fallback)
 
 crates/tracker-server/ - signet-tracker-server: HTTP/WS API server (lib + bin)
-  src/lib.rs - Server library root, signal handling, config_from_env
+  src/lib.rs - Server library root, run(), handle_signals(), config_from_env(), TasksJoinHandles, handle_task_exit()
   src/main.rs - Binary entry point
-  src/config.rs - TrackerConfig (FromEnv + Init4Config), provider type aliases, connect methods
-  src/initialization.rs - Provider and tx-cache connection with exponential backoff retry
-  src/service.rs - Axum HTTP server with graceful shutdown via CancellationToken
+  src/config.rs - Config (FromEnv + Init4Config), provider type aliases, connect methods with retry
+  src/service.rs - Axum HTTP/WS router, AppState, serve_tracker()
+  src/metrics.rs - Prometheus metrics with typed label enums
+  src/ingestion/
+    block_watcher.rs - Rollup WS block subscription + host HTTP block polling (BlockTip, BlockNumbers)
+    event_watcher.rs - Rollup WS subscription to Filled + Order log events
+    order_discovery.rs - Periodic tx-cache polling for new orders
+  src/state/
+    event_store.rs - In-memory BTreeMap of recent Filled/Order events with block-based pruning
+    tracked_order.rs - TrackedOrder wrapper (SignedOrder + OrderStatus + deadline)
+    state_manager.rs - Central select! loop: processes events, tracks orders, broadcasts updates
+  src/ws/
+    handlers.rs - Axum WebSocket upgrade handlers for single-order and all-orders endpoints
+    messages.rs - OrderFilter, StatusFilter for WS client filtering
 ```
 
 ## Build & Run
@@ -38,25 +53,28 @@ crates/tracker-server/ - signet-tracker-server: HTTP/WS API server (lib + bin)
 ### signet-tracker (library)
 - **signet-sdk crates** (`signet-constants`, `signet-orders`, `signet-tx-cache`, `signet-types`, `signet-zenith`): Signet chain types, order signing, Permit2 nonce checks, tx-cache client
 - **alloy**: Ethereum provider/types, contract calls, event log queries
-- **thiserror**: Library error types
+- **jiff**: Human-readable timestamp and duration serialization
 - **tracing**: Instrumentation
 - **serde**: Serializable output types for consumer rendering
 
 ### signet-tracker-server (API server)
 - **signet-tracker**: The tracking library
 - **init4-bin-base**: Config loading (FromEnv derive), tracing/metrics init, provider config types
-- **alloy**: RPC providers
-- **axum**: HTTP server
+- **alloy**: RPC providers (HTTP + WS)
+- **axum**: HTTP + WebSocket server
 - **backon**: Exponential backoff retry for provider/tx-cache connections
 - **tokio** + **tokio-util**: Async runtime, signal handling, CancellationToken
 
 ## Conventions
 
-- All output types implement `Serialize` so consumers can render as JSON, display in a GUI, etc.
+- All output types implement `Serialize` so consumers can render as JSON
+- `OrderStatus` is the single output type — each variant (Pending/Filled/Expired) contains the order_hash and relevant fields for that state
 - `OrderTracker` is generic over `RuP: Provider` and `HostP: Provider` — no concrete provider types
-- Public API is minimal: `OrderTracker::new` and `OrderTracker::status` only — diagnostics are always run internally and returned alongside the derived status in `OrderReport`
-- The `fill_search` module is `pub(crate)` — its ERC-20 helpers are used by the tracker but not part of the public API
-- Workspace dependencies are declared in the root `Cargo.toml` and inherited by crates via `.workspace = true`
+- Public API: `status()` (fetches from tx-cache), `status_for_order()` (takes existing order), `check_*` methods, `find_fill()`
+- Workspace dependencies are declared in the root `Cargo.toml` and inherited via `.workspace = true`
 - No global static config — `config_from_env()` returns the config and OTLP guard; the binary owns them on the stack
 - Provider connections use exponential backoff retry (following the pattern from `init4/filler`)
-- Graceful shutdown via `CancellationToken` cancelled on SIGINT/SIGTERM
+- Graceful shutdown via `CancellationToken` cancelled on SIGINT/SIGTERM; all tasks use `handle_task_exit()` for consistent error reporting
+- Visibility is as restrictive as possible — `pub(crate)` preferred over `pub` for internal items
+- Metrics use typed label enums rather than arbitrary strings
+- `Error` uses manual `Display` impl: normal format shows the message, alternate format (`{:#}`) walks the full source chain

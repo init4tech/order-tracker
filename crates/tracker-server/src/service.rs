@@ -1,5 +1,6 @@
-use crate::{config::Tracker, metrics};
+use crate::{config::Tracker, metrics, state::state_manager::TrackOrderRequest, ws::handlers};
 use alloy::primitives::B256;
+use axum::http::Uri;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -7,12 +8,30 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use eyre::{Report, Result, WrapErr, bail};
+use eyre::{Result, WrapErr};
 use serde::Serialize;
+use signet_tracker::OrderStatus;
+use signet_tx_cache::TxCache;
 use std::{net::SocketAddr, sync::Arc};
-use tokio::{net::TcpListener, task::JoinHandle, time::Instant};
+use tokio::{
+    net::TcpListener,
+    sync::{broadcast, mpsc},
+    time::Instant,
+};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, instrument};
+use tracing::{error, instrument};
+
+/// Shared application state available to all HTTP and WS handlers.
+pub(crate) struct AppState {
+    /// The order tracker (used by the GET endpoint for full on-demand diagnostics).
+    pub(crate) tracker: Tracker,
+    /// Channel to register orders with the state manager (used by WS handlers).
+    pub(crate) track_request_sender: mpsc::Sender<TrackOrderRequest>,
+    /// Broadcast sender for order status updates (WS handlers subscribe to this).
+    pub(crate) update_sender: broadcast::Sender<OrderStatus>,
+    /// Tx-cache client for order lookup in WS handlers.
+    pub(crate) tx_cache: TxCache,
+}
 
 /// JSON error response body.
 #[derive(Serialize)]
@@ -24,90 +43,68 @@ async fn healthcheck() -> Response {
     Json(serde_json::json!({"status": "ok"})).into_response()
 }
 
-async fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "not found".into() })).into_response()
+async fn route_not_found(uri: Uri) -> Response {
+    (StatusCode::NOT_FOUND, Json(ErrorResponse { error: format!("No route for {uri}") }))
+        .into_response()
 }
 
 /// Query the status of a single order by hash.
-#[instrument(skip(tracker), fields(%order_hash))]
+#[instrument(skip(state), fields(%order_hash))]
 async fn order_status(
-    State(tracker): State<Arc<Tracker>>,
+    State(state): State<Arc<AppState>>,
     Path(order_hash): Path<B256>,
 ) -> Response {
     let start = Instant::now();
-    let response = match tracker.status(order_hash).await {
+    let response = match state.tracker.status(order_hash).await {
         Ok(report) => {
-            metrics::record_request("success");
+            metrics::record_request(metrics::RequestResult::Success);
             Json(report).into_response()
         }
         Err(signet_tracker::Error::OrderNotFound(_)) => {
-            metrics::record_request("not-found");
-            metrics::record_request_error("not-found");
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "order not found in tx-cache".into() }),
-            )
-                .into_response()
+            metrics::record_request(metrics::RequestResult::NotFound);
+            let error = Json(ErrorResponse { error: "order not found in tx-cache".into() });
+            (StatusCode::NOT_FOUND, error).into_response()
         }
         Err(err) => {
             error!(%err, "failed to query order status");
-            metrics::record_request("error");
-            metrics::record_request_error("internal");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: err.to_string() }))
-                .into_response()
+            metrics::record_request(metrics::RequestResult::Error);
+            let error = Json(ErrorResponse { error: err.to_string() });
+            (StatusCode::INTERNAL_SERVER_ERROR, error).into_response()
         }
     };
     metrics::record_request_duration(start.elapsed());
     response
 }
 
-/// Serve the tracker HTTP API until cancelled or failure.
+/// Serve the tracker HTTP and WebSocket API until cancelled or failure.
 ///
 /// Returns `Ok(())` on graceful cancellation or an error if the server exits unexpectedly.
-pub async fn serve_tracker(
-    tracker: Tracker,
+pub(crate) async fn serve_tracker(
+    app_state: Arc<AppState>,
     port: u16,
     cancellation_token: CancellationToken,
 ) -> Result<()> {
     std::sync::LazyLock::force(&metrics::DESCRIPTIONS);
-    let handle = do_serve(tracker, port, cancellation_token.clone());
-    let result = handle.await;
-    if cancellation_token.is_cancelled() {
-        return Ok(());
-    }
-    cancellation_token.cancel();
-    match result {
-        Ok(Ok(())) => bail!("tracker server exited without cancellation"),
-        Ok(error) => error,
-        Err(error) if error.is_panic() => {
-            Err(Report::new(error).wrap_err("panic in tracker server"))
-        }
-        Err(_) => bail!("tracker server task cancelled unexpectedly"),
-    }
-}
+    let shutdown_token = cancellation_token.clone();
 
-fn do_serve(
-    tracker: Tracker,
-    port: u16,
-    cancel_token: CancellationToken,
-) -> JoinHandle<Result<()>> {
-    let shared_tracker = Arc::new(tracker);
-    let router = Router::new()
-        .route("/healthcheck", get(healthcheck))
-        .route("/orders/{order_hash}", get(order_status))
-        .fallback(not_found)
-        .with_state(shared_tracker);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tokio::spawn(async move {
+    let result = async {
+        let router = Router::new()
+            .route("/healthcheck", get(healthcheck))
+            .route("/orders/{order_hash}", get(order_status))
+            .route("/orders/{order_hash}/ws", get(handlers::single_order_ws))
+            .route("/orders/ws", get(handlers::all_orders_ws))
+            .fallback(route_not_found)
+            .with_state(app_state);
+        let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let listener = TcpListener::bind(addr)
             .await
             .wrap_err_with(|| format!("failed to bind tracker server on port {port}"))?;
         axum::serve(listener, router)
-            .with_graceful_shutdown(async move {
-                cancel_token.cancelled().await;
-                debug!("tracker server cancelled");
-            })
+            .with_graceful_shutdown(shutdown_token.cancelled_owned())
             .await
             .wrap_err("failed serving tracker")
-    })
+    }
+    .await;
+
+    crate::handle_task_exit("server", result, &cancellation_token)
 }

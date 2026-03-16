@@ -1,6 +1,7 @@
 use git_version::git_version;
 use init4_bin_base::deps::tracing::{info, info_span};
-use signet_tracker_server::{config::env_var_info, service::serve_tracker};
+use signet_tracker_server::config::env_var_info;
+use std::env;
 
 const GIT_COMMIT: &str =
     git_version!(args = ["--always", "--match=", "--abbrev=7"], fallback = "unknown");
@@ -21,7 +22,7 @@ Configuration is via the following environment variables:
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> eyre::Result<()> {
-    if std::env::args().any(|arg| arg == "-h" || arg == "--help") {
+    if env::args().any(|arg| arg == "-h" || arg == "--help") {
         print_help();
         return Ok(());
     }
@@ -33,14 +34,9 @@ async fn main() -> eyre::Result<()> {
     info!(pkg_version = PKG_VERSION, git_commit = GIT_COMMIT, "starting tracker server");
 
     let cancellation_token = signet_tracker_server::handle_signals()?;
-
-    let tracker = tokio::select! {
-        biased;
-        _ = cancellation_token.cancelled() => return Ok(()),
-        result = config.connect_tracker() => result?,
-    };
+    let tasks = signet_tracker_server::run(config, cancellation_token).await?;
 
     drop(init_span);
 
-    serve_tracker(tracker, config.port(), cancellation_token).await
+    tasks.await
 }

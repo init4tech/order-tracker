@@ -87,6 +87,11 @@ impl Config {
         }
     }
 
+    /// Signet system constants.
+    pub(crate) const fn constants(&self) -> &SignetSystemConstants {
+        &self.constants
+    }
+
     /// Connect to the rollup provider with retry.
     pub async fn connect_ru_provider(&self) -> eyre::Result<RuProvider> {
         connect_provider("rollup", &self.ru_rpc).await

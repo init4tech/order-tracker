@@ -27,6 +27,9 @@ pub(crate) struct TrackOrderRequest {
     pub(crate) initial_report_sender: Option<oneshot::Sender<OrderStatus>>,
 }
 
+/// A oneshot channel for requesting a snapshot of all currently tracked order statuses.
+pub(crate) type SnapshotRequest = oneshot::Sender<Vec<OrderStatus>>;
+
 /// The central state manager. Processes chain events, tracks order lifecycle, and broadcasts
 /// status updates.
 ///
@@ -40,6 +43,7 @@ pub(crate) struct StateManager {
     order_receiver: mpsc::Receiver<SignedOrder>,
     all_order_hashes_receiver: watch::Receiver<HashSet<B256>>,
     track_request_receiver: mpsc::Receiver<TrackOrderRequest>,
+    snapshot_request_receiver: mpsc::Receiver<SnapshotRequest>,
     update_sender: broadcast::Sender<OrderStatus>,
     cancellation_token: CancellationToken,
 }
@@ -54,6 +58,7 @@ impl StateManager {
         order_receiver: mpsc::Receiver<SignedOrder>,
         all_order_hashes_receiver: watch::Receiver<HashSet<B256>>,
         track_request_receiver: mpsc::Receiver<TrackOrderRequest>,
+        snapshot_request_receiver: mpsc::Receiver<SnapshotRequest>,
         update_sender: broadcast::Sender<OrderStatus>,
         retention_blocks: u64,
         cancellation_token: CancellationToken,
@@ -67,6 +72,7 @@ impl StateManager {
             order_receiver,
             all_order_hashes_receiver,
             track_request_receiver,
+            snapshot_request_receiver,
             update_sender,
             cancellation_token,
         }
@@ -105,6 +111,12 @@ impl StateManager {
                 request = self.track_request_receiver.recv() => {
                     let request = request.ok_or_else(|| eyre!("track request channel closed"))?;
                     self.register_order(request.order, request.initial_report_sender).await;
+                }
+                request = self.snapshot_request_receiver.recv() => {
+                    let request = request.ok_or_else(|| eyre!("snapshot request channel closed"))?;
+                    let statuses: Vec<OrderStatus> = self.tracked_orders.values().map(|tracked| tracked.status().clone()).collect();
+                    debug!(count = statuses.len(), "sending snapshot to all-orders client");
+                    let _ = request.send(statuses);
                 }
             }
         }

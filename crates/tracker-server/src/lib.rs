@@ -164,6 +164,8 @@ pub async fn run(
     // Track requests from WS single-order handlers. Each connection sends exactly one request, so
     // this only needs to cover concurrent WS upgrades; 64 is ample.
     let (track_request_sender, track_request_receiver) = mpsc::channel(64);
+    // Snapshot requests from WS all-orders handlers. Each connection sends one request on connect.
+    let (snapshot_request_sender, snapshot_request_receiver) = mpsc::channel(64);
     // Status updates broadcast to all WS subscribers. Sized to match the event channel since each
     // event produces at most one update; slow consumers that fall behind will see a Lagged error.
     let (update_sender, _initial_receiver) = broadcast::channel(1024);
@@ -205,6 +207,7 @@ pub async fn run(
         order_receiver,
         all_order_hashes_receiver,
         track_request_receiver,
+        snapshot_request_receiver,
         update_sender.clone(),
         300, // ~1 hour at 12s blocks
         cancellation_token.clone(),
@@ -213,8 +216,13 @@ pub async fn run(
 
     // Build shared app state (with a second tracker for the GET endpoint).
     let get_tracker = config.connect_tracker().await?;
-    let app_state =
-        Arc::new(AppState { tracker: get_tracker, track_request_sender, update_sender, tx_cache });
+    let app_state = Arc::new(AppState {
+        tracker: get_tracker,
+        track_request_sender,
+        snapshot_request_sender,
+        update_sender,
+        tx_cache,
+    });
 
     // Spawn the HTTP/WS server.
     let port = config.port();

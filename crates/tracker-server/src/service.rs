@@ -1,4 +1,9 @@
-use crate::{config::Tracker, metrics, state::state_manager::TrackOrderRequest, ws::handlers};
+use crate::{
+    config::Tracker,
+    metrics,
+    state::state_manager::{SnapshotRequest, TrackOrderRequest},
+    ws::handlers,
+};
 use alloy::primitives::B256;
 use axum::http::Uri;
 use axum::{
@@ -27,6 +32,8 @@ pub(crate) struct AppState {
     pub(crate) tracker: Tracker,
     /// Channel to register orders with the state manager (used by WS handlers).
     pub(crate) track_request_sender: mpsc::Sender<TrackOrderRequest>,
+    /// Channel to request a snapshot of all tracked order statuses from the state manager.
+    pub(crate) snapshot_request_sender: mpsc::Sender<SnapshotRequest>,
     /// Broadcast sender for order status updates (WS handlers subscribe to this).
     pub(crate) update_sender: broadcast::Sender<OrderStatus>,
     /// Tx-cache client for order lookup in WS handlers.

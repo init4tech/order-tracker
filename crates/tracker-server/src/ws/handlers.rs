@@ -152,7 +152,27 @@ async fn handle_all_orders(socket: WebSocket, state: Arc<AppState>) {
 
     debug!("all-orders subscription started");
 
+    // Subscribe to broadcast updates *before* requesting the snapshot so that no updates are
+    // missed between the snapshot and the first recv().
     let mut update_receiver = state.update_sender.subscribe();
+
+    // Request a snapshot of all currently tracked orders from the state manager.
+    let (snapshot_sender, snapshot_receiver) = oneshot::channel();
+    if state.snapshot_request_sender.send(snapshot_sender).await.is_err() {
+        warn!("state manager channel closed");
+        close_connection(&mut ws_sender, "all-orders").await;
+        return;
+    }
+
+    if let Ok(snapshot) = snapshot_receiver.await {
+        debug!(count = snapshot.len(), "sending initial snapshot");
+        for status in &snapshot {
+            if !send_status(WsEndpoint::All, &mut ws_sender, status).await {
+                debug!("all-orders client disconnected during snapshot");
+                return;
+            }
+        }
+    }
 
     loop {
         tokio::select! {

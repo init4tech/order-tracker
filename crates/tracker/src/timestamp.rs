@@ -1,5 +1,5 @@
 use core::fmt;
-use serde::{Serialize, ser::SerializeStruct};
+use serde::{Deserialize, Serialize, de::Deserializer, ser::SerializeStruct};
 
 /// A unix timestamp (seconds) that serializes with both the raw integer and an ISO 8601 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -42,5 +42,37 @@ impl Serialize for Timestamp {
         };
         state.serialize_field("utc", &human)?;
         state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Timestamp {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Helper {
+            secs_since_epoch: u64,
+        }
+        Helper::deserialize(deserializer).map(|helper| Self(helper.secs_since_epoch))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip() {
+        let ts = Timestamp::new(1_700_000_000);
+        let json = serde_json::to_string(&ts).unwrap();
+        let deserialized: Timestamp = serde_json::from_str(&json).unwrap();
+        assert_eq!(ts, deserialized);
+        assert_eq!(json, serde_json::to_string(&deserialized).unwrap());
+    }
+
+    #[test]
+    fn roundtrip_zero() {
+        let ts = Timestamp::new(0);
+        let json = serde_json::to_string(&ts).unwrap();
+        let deserialized: Timestamp = serde_json::from_str(&json).unwrap();
+        assert_eq!(ts, deserialized);
     }
 }

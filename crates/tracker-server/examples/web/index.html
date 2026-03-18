@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signet Order Tracker</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d28;
+            --border: #2a2d3a;
+            --text: #e1e4ed;
+            --text-dim: #8b8fa3;
+            --pending: #f0b429;
+            --filled: #27ab6e;
+            --expired: #e5484d;
+            --accent: #3b82f6;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 1.5rem;
+            min-height: 100vh;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+        h1 { font-size: 1.2rem; font-weight: 600; }
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        #url {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            width: 320px;
+        }
+        #url:focus { outline: 1px solid var(--accent); }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.4rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+        button:hover { opacity: 0.85; }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--expired);
+            flex-shrink: 0;
+        }
+        .status-dot.connected { background: var(--filled); }
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.2rem;
+            flex-wrap: wrap;
+        }
+        .stat {
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .stat.pending { color: var(--pending); background: rgba(240, 180, 41, 0.1); }
+        .stat.filled { color: var(--filled); background: rgba(39, 171, 110, 0.1); }
+        .stat.expired { color: var(--expired); background: rgba(229, 72, 77, 0.1); }
+        .order-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .order-table th {
+            text-align: left;
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.78rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .order-row {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .order-row:hover { background: var(--surface); }
+        .order-row td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-badge.pending { color: var(--pending); background: rgba(240, 180, 41, 0.15); }
+        .status-badge.filled { color: var(--filled); background: rgba(39, 171, 110, 0.15); }
+        .status-badge.expired { color: var(--expired); background: rgba(229, 72, 77, 0.15); }
+        .detail-row { display: none; }
+        .detail-row.expanded { display: table-row; }
+        .detail-row td {
+            padding: 1rem 1rem 1rem 2rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-content {
+            font-size: 0.82rem;
+            line-height: 1.7;
+        }
+        .detail-section { margin-bottom: 0.8rem; }
+        .detail-section:last-child { margin-bottom: 0; }
+        .detail-section h3 {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .check-list { list-style: none; padding-left: 1rem; }
+        .check-item { margin: 0.15rem 0; }
+        .check-ok { color: var(--filled); }
+        .check-fail { color: var(--expired); }
+        .check-unknown { color: var(--text-dim); }
+        .hash { color: var(--accent); }
+        .dim { color: var(--text-dim); }
+        .empty-state {
+            text-align: center;
+            color: var(--text-dim);
+            padding: 3rem;
+            font-size: 0.9rem;
+        }
+        .expand-icon {
+            display: inline-block;
+            width: 1em;
+            transition: transform 0.15s;
+            color: var(--text-dim);
+        }
+        .expand-icon.open { transform: rotate(90deg); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Signet Order Tracker</h1>
+        <div class="connection">
+            <input id="url" value="ws://localhost:8019/orders/ws" />
+            <button id="connect-btn">Connect</button>
+            <div class="status-dot" id="status-dot"></div>
+        </div>
+    </header>
+
+    <div class="stats">
+        <span class="stat pending" id="stat-pending">0 pending</span>
+        <span class="stat filled" id="stat-filled">0 filled</span>
+        <span class="stat expired" id="stat-expired">0 expired</span>
+    </div>
+
+    <div id="orders">
+        <div class="empty-state">Not connected. Enter the server URL and click Connect.</div>
+    </div>
+
+    <script>
+        const orders = new Map();
+        const expanded = new Set();
+        let ws = null;
+
+        const esc = (() => {
+            const el = document.createElement('span');
+            return text => { el.textContent = text; return el.innerHTML; };
+        })();
+
+        function toggleConnect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                connect();
+            }
+        }
+
+        function connect() {
+            const url = document.getElementById('url').value;
+            if (ws) ws.close();
+
+            try { ws = new WebSocket(url); }
+            catch { return; }
+
+            ws.onopen = () => {
+                document.getElementById('status-dot').classList.add('connected');
+                document.getElementById('connect-btn').textContent = 'Disconnect';
+                if (orders.size === 0) {
+                    document.getElementById('orders').innerHTML =
+                        '<div class="empty-state">Connected. Waiting for orders\u2026</div>';
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('status-dot').classList.remove('connected');
+                document.getElementById('connect-btn').textContent = 'Connect';
+                ws = null;
+            };
+
+            ws.onerror = () => {
+                document.getElementById('status-dot').classList.remove('connected');
+            };
+
+            ws.onmessage = event => {
+                try {
+                    const status = JSON.parse(event.data);
+                    orders.set(status.order_hash, status);
+                    render();
+                } catch { /* ignore malformed messages */ }
+            };
+        }
+
+        function toggleExpand(hash) {
+            expanded.has(hash) ? expanded.delete(hash) : expanded.add(hash);
+            render();
+        }
+
+        function render() {
+            updateStats();
+
+            const container = document.getElementById('orders');
+            if (orders.size === 0) {
+                container.innerHTML = '<div class="empty-state">Connected. Waiting for orders\u2026</div>';
+                return;
+            }
+
+            let html = `<table class="order-table">
+                <thead><tr><th></th><th>Order Hash</th><th>Status</th><th>Info</th></tr></thead>
+                <tbody>`;
+
+            for (const [hash, order] of orders) {
+                const isOpen = expanded.has(hash);
+                html += `<tr class="order-row" onclick="toggleExpand('${esc(hash)}')">
+                    <td><span class="expand-icon ${isOpen ? 'open' : ''}">&#x25B8;</span></td>
+                    <td><span class="hash">${truncHash(hash)}</span></td>
+                    <td><span class="status-badge ${order.status}">${order.status}</span></td>
+                    <td>${infoSummary(order)}</td>
+                </tr>
+                <tr class="detail-row ${isOpen ? 'expanded' : ''}">
+                    <td colspan="4"><div class="detail-content">${details(order)}</div></td>
+                </tr>`;
+            }
+
+            container.innerHTML = html + '</tbody></table>';
+        }
+
+        function updateStats() {
+            let pending = 0, filled = 0, expired = 0;
+            for (const order of orders.values()) {
+                if (order.status === 'pending') pending++;
+                else if (order.status === 'filled') filled++;
+                else expired++;
+            }
+            document.getElementById('stat-pending').textContent = `${pending} pending`;
+            document.getElementById('stat-filled').textContent = `${filled} filled`;
+            document.getElementById('stat-expired').textContent = `${expired} expired`;
+        }
+
+        function infoSummary(order) {
+            if (order.status === 'pending' || order.status === 'expired') {
+                return `${esc(order.deadline_check.expires_in)}&ensp;`
+                    + `cache:${mbIcon(order.is_in_cache)} `
+                    + `bal:${mbIcon(order.balance_checks.all_sufficient)} `
+                    + `allow:${mbIcon(order.allowance_checks.all_sufficient)}`;
+            }
+            if (order.fill_info) return `block ${order.fill_info.block_number}`;
+            return '<span class="dim">fill info unavailable</span>';
+        }
+
+        function details(order) {
+            let html = `<div class="detail-section">
+                <strong>Order Hash:</strong> <span class="hash">${esc(order.order_hash)}</span>
+            </div>`;
+
+            if (order.status === 'pending' || order.status === 'expired') {
+                html += diagnosticsHtml(order);
+            } else if (order.fill_info) {
+                html += fillInfoHtml(order.fill_info);
+            }
+            return html;
+        }
+
+        function diagnosticsHtml(order) {
+            let html = `<div class="detail-section">
+                <strong>In Cache:</strong> ${mbIcon(order.is_in_cache)} ${esc(String(order.is_in_cache))}
+            </div>`;
+
+            const dc = order.deadline_check;
+            html += `<div class="detail-section">
+                <h3>Deadline</h3>
+                Deadline: ${esc(dc.deadline.utc)}<br>
+                Expires in: ${esc(dc.expires_in)}<br>
+                Checked at: ${esc(dc.checked_at.utc)}
+            </div>`;
+
+            html += checksHtml('Allowances', order.allowance_checks, 'allowance');
+            html += checksHtml('Balances', order.balance_checks, 'balance');
+            return html;
+        }
+
+        function checksHtml(title, group, amountKey) {
+            let html = `<div class="detail-section">
+                <h3>${title} ${mbIcon(group.all_sufficient)}</h3>
+                <ul class="check-list">`;
+            for (const check of group.checks) {
+                const icon = check.sufficient
+                    ? '<span class="check-ok">&#x2713;</span>'
+                    : '<span class="check-fail">&#x2717;</span>';
+                const current = check[amountKey].decimal;
+                html += `<li class="check-item">${icon} ${esc(check.token_symbol)}: ${esc(current)} / ${esc(check.required.decimal)}</li>`;
+            }
+            return html + '</ul></div>';
+        }
+
+        function fillInfoHtml(info) {
+            let html = `<div class="detail-section">
+                <h3>Fill Info</h3>
+                Block: ${info.block_number}<br>`;
+            if (info.rollup_initiation_tx)
+                html += `Initiation tx: <span class="hash">${esc(info.rollup_initiation_tx)}</span><br>`;
+            if (info.fill_tx)
+                html += `Fill tx (${esc(info.fill_tx.chain)}): <span class="hash">${esc(info.fill_tx.tx_hash)}</span><br>`;
+            html += '</div>';
+
+            if (info.outputs && info.outputs.length > 0) {
+                html += '<div class="detail-section"><h3>Outputs</h3><ul class="check-list">';
+                for (const out of info.outputs)
+                    html += `<li class="check-item">${esc(out.token_symbol)} ${esc(out.amount.decimal)} &#x2192; <span class="hash">${truncHash(out.recipient)}</span> (${esc(out.chain)})</li>`;
+                html += '</ul></div>';
+            }
+            return html;
+        }
+
+        function truncHash(hash) {
+            return hash.length > 14
+                ? esc(hash.slice(0, 10)) + '&hellip;' + esc(hash.slice(-4))
+                : esc(hash);
+        }
+
+        function mbIcon(value) {
+            if (value === 'true') return '<span class="check-ok">&#x2713;</span>';
+            if (value === 'false') return '<span class="check-fail">&#x2717;</span>';
+            return '<span class="check-unknown">?</span>';
+        }
+
+        document.getElementById('connect-btn').addEventListener('click', toggleConnect);
+        document.getElementById('url').addEventListener('keydown', e => {
+            if (e.key === 'Enter') toggleConnect();
+        });
+    </script>
+</body>
+</html>

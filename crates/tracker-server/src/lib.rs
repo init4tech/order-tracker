@@ -141,16 +141,21 @@ pub fn handle_signals() -> Result<CancellationToken> {
 pub async fn run(
     config: &config::Config,
     cancellation_token: CancellationToken,
-) -> Result<TasksJoinHandles> {
-    // Connect the tracker (for the GET endpoint).
-    let tracker = config.connect_tracker().await?;
-
-    // Connect providers. The rollup WS provider is used for both block and event subscriptions.
-    // The host provider is used only for block number polling (HTTP is sufficient).
-    let (ru_ws_provider, host_provider) =
-        tokio::try_join!(config.connect_ru_provider(), config.connect_host_provider())?;
-
-    let tx_cache = config.connect_tx_cache().await?;
+) -> Result<Option<TasksJoinHandles>> {
+    // Connect all providers and caches concurrently, but bail immediately on shutdown so that
+    // SIGINT/SIGTERM during startup (e.g. while retrying provider connections) kills the process.
+    let (tracker, ru_ws_provider, host_provider, tx_cache, get_tracker) = select! {
+        result = async {
+            tokio::try_join!(
+                config.connect_tracker(),
+                config.connect_ru_provider(),
+                config.connect_host_provider(),
+                config.connect_tx_cache(),
+                config.connect_tracker(),
+            )
+        } => result?,
+        _ = cancellation_token.cancelled() => return Ok(None),
+    };
     let constants = config.constants().clone();
 
     // Create channels.
@@ -214,8 +219,6 @@ pub async fn run(
     );
     let state_manager_join_handle = tokio::spawn(state_manager_task.run());
 
-    // Build shared app state (with a second tracker for the GET endpoint).
-    let get_tracker = config.connect_tracker().await?;
     let app_state = Arc::new(AppState {
         tracker: get_tracker,
         track_request_sender,
@@ -230,13 +233,13 @@ pub async fn run(
     let server =
         tokio::spawn(async move { service::serve_tracker(app_state, port, server_cancel).await });
 
-    Ok(TasksJoinHandles {
+    Ok(Some(TasksJoinHandles {
         server,
         block_watcher: block_watcher_spawned.join_handle,
         event_watcher: event_watcher_join_handle,
         order_discovery: order_discovery_join_handle,
         state_manager: state_manager_join_handle,
-    })
+    }))
 }
 
 /// Normalize a background task's exit into a consistent `Result`.

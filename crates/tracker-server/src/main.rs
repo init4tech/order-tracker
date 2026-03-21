@@ -34,7 +34,10 @@ async fn main() -> eyre::Result<()> {
     info!(pkg_version = PKG_VERSION, git_commit = GIT_COMMIT, "starting tracker server");
 
     let cancellation_token = signet_tracker_server::handle_signals()?;
-    let tasks = signet_tracker_server::run(config, cancellation_token).await?;
+    let Some(tasks) = signet_tracker_server::run(config, cancellation_token).await? else {
+        // Initialization was cancelled.
+        return Ok(());
+    };
 
     drop(init_span);
 

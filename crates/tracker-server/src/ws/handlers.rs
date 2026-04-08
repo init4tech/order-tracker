@@ -1,18 +1,19 @@
 use crate::{
     metrics::WsEndpoint,
-    service::AppState,
+    service::{AppState, parse_order_hash},
     state::state_manager::TrackOrderRequest,
     ws::messages::{OrderFilter, StatusFilter},
 };
 use alloy::primitives::B256;
-use axum::extract::{
-    Path, State,
-    ws::{Message, WebSocket},
+use axum::{
+    extract::{
+        Path, State,
+        ws::{Message, WebSocket},
+    },
+    response::Response,
 };
-use axum::response::Response;
 use core::pin::pin;
-use futures_util::stream::SplitSink;
-use futures_util::{SinkExt, StreamExt, TryStreamExt};
+use futures_util::{SinkExt, StreamExt, TryStreamExt, stream::SplitSink};
 use signet_tracker::OrderStatus;
 use std::sync::Arc;
 use tokio::sync::{broadcast::error::RecvError, oneshot};
@@ -25,12 +26,16 @@ const WS_SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 ///
 /// Sends the initial report, then status updates on each change. Closes when the order reaches a
 /// terminal state (filled or expired).
-#[instrument(skip(state, ws), fields(%order_hash))]
+#[instrument(skip_all, fields(order_hash = %raw_hash))]
 pub(crate) async fn single_order_ws(
     State(state): State<Arc<AppState>>,
-    Path(order_hash): Path<B256>,
+    Path(raw_hash): Path<String>,
     ws: axum::extract::ws::WebSocketUpgrade,
 ) -> Response {
+    let order_hash = match parse_order_hash(&raw_hash) {
+        Ok(hash) => hash,
+        Err(response) => return response,
+    };
     ws.on_upgrade(move |socket| handle_single_order(socket, state, order_hash))
 }
 
@@ -54,6 +59,7 @@ async fn handle_single_order(socket: WebSocket, state: Arc<AppState>, order_hash
     };
 
     let Some(order) = order else {
+        debug!(%order_hash, "order not found in tx-cache");
         let error = serde_json::json!({"error": "order not found in tx-cache"});
         timed_send(&mut ws_sender, Message::text(error.to_string())).await;
         close_connection(&mut ws_sender, "single-order").await;

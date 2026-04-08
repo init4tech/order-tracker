@@ -123,7 +123,7 @@ impl StateManager {
     }
 
     /// Handle new blocks on both chains. Re-runs diagnostics for all pending orders, detecting
-    /// deadline expiry and nonce consumption (missed fill events).
+    /// deadline expiry and nonce consumption (missed fill events). Evicts terminal orders afterward.
     async fn handle_new_blocks(&mut self, tip: BlockTip) {
         self.event_store.update_tips(tip);
 
@@ -158,6 +158,14 @@ impl StateManager {
             if status_changed || matches!(new_status, OrderStatus::Pending { .. }) {
                 let _ = self.update_sender.send(new_status);
             }
+        }
+
+        // Evict terminal orders - their final status has already been broadcast.
+        let before = self.tracked_orders.len();
+        self.tracked_orders.retain(|_, tracked| !tracked.is_terminal());
+        let evicted = before - self.tracked_orders.len();
+        if evicted > 0 {
+            debug!(evicted, remaining = self.tracked_orders.len(), "evicted terminal orders");
         }
     }
 
@@ -281,11 +289,11 @@ fn build_fill_info(
     tracked: &TrackedOrder,
 ) -> FillInfo {
     let deadline: u64 = tracked.order().permit().permit.deadline.to();
-    let initiation = event_store.find_order_by_deadline(deadline);
+    let rollup_initiation_tx = event_store.find_order_tx(deadline, tracked.order().outputs());
 
     FillInfo {
         block_number: filled.block_number,
-        rollup_initiation_tx: initiation.map(|event| event.tx_hash),
+        rollup_initiation_tx,
         fill_tx: Some(signet_tracker::ChainTransaction {
             chain: filled.chain,
             tx_hash: filled.tx_hash,

@@ -5,14 +5,14 @@ use crate::{
     ws::handlers,
 };
 use alloy::primitives::B256;
-use axum::http::Uri;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
 };
+use core::str::FromStr;
 use eyre::{Result, WrapErr};
 use serde::Serialize;
 use signet_tracker::OrderStatus;
@@ -24,7 +24,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, instrument};
+use tracing::{debug, error, instrument};
 
 /// Shared application state available to all HTTP and WS handlers.
 pub(crate) struct AppState {
@@ -51,16 +51,31 @@ async fn healthcheck() -> Response {
 }
 
 async fn route_not_found(uri: Uri) -> Response {
+    debug!(%uri, "no matching route");
     (StatusCode::NOT_FOUND, Json(ErrorResponse { error: format!("No route for {uri}") }))
         .into_response()
 }
 
+/// Parse an order hash from the path, logging and returning a 400 on failure.
+#[expect(clippy::result_large_err, reason = "callers return the Response immediately")]
+pub(crate) fn parse_order_hash(raw: &str) -> Result<B256, Response> {
+    B256::from_str(raw).map_err(|error| {
+        let msg = format!("malformed order hash: {error}");
+        debug!(msg);
+        (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: msg })).into_response()
+    })
+}
+
 /// Query the status of a single order by hash.
-#[instrument(skip(state), fields(%order_hash))]
+#[instrument(skip_all, fields(order_hash = %raw_hash))]
 async fn order_status(
     State(state): State<Arc<AppState>>,
-    Path(order_hash): Path<B256>,
+    Path(raw_hash): Path<String>,
 ) -> Response {
+    let order_hash = match parse_order_hash(&raw_hash) {
+        Ok(hash) => hash,
+        Err(response) => return response,
+    };
     let start = Instant::now();
     let response = match state.tracker.status(order_hash).await {
         Ok(report) => {
@@ -68,6 +83,7 @@ async fn order_status(
             Json(report).into_response()
         }
         Err(signet_tracker::Error::OrderNotFound(_)) => {
+            debug!("order not found in tx-cache");
             metrics::record_request(metrics::RequestResult::NotFound);
             let error = Json(ErrorResponse { error: "order not found in tx-cache".into() });
             (StatusCode::NOT_FOUND, error).into_response()

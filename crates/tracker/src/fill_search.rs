@@ -1,5 +1,9 @@
+use crate::{
+    Error,
+    order_status::{Chain, ChainTransaction, FillInfo, FillOutput},
+};
 use alloy::{
-    primitives::{Address, Log, U256},
+    primitives::{Address, B256, Log, U256},
     providers::Provider,
     sol,
     sol_types::SolEvent,
@@ -7,12 +11,6 @@ use alloy::{
 use signet_types::SignedOrder;
 use signet_zenith::RollupOrders;
 use tracing::{instrument, trace, warn};
-
-use crate::{
-    Error,
-    order_status::{Chain, ChainTransaction, FillInfo, FillOutput},
-};
-use alloy::primitives::B256;
 
 sol! {
     /// Minimal ERC-20 interface for balance and allowance queries.

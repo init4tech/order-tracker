@@ -127,11 +127,12 @@ fn decode_log(log: &alloy::rpc::types::Log) -> Option<ChainEvent> {
     }
 
     match RollupOrders::Order::decode_log(&inner) {
-        Ok(decoded) => Some(ChainEvent::Order(OrderEvent {
+        Ok(decoded) => Some(ChainEvent::Order(OrderEvent::new(
             block_number,
             tx_hash,
-            deadline: decoded.deadline.to(),
-        })),
+            decoded.deadline.to(),
+            &decoded.data.outputs,
+        ))),
         Err(error) => {
             warn!(%tx_hash, block_number, %error, "failed to decode rollup log event");
             None

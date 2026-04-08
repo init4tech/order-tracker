@@ -3,10 +3,10 @@ use alloy::providers::Provider;
 use eyre::{Context, bail};
 use signet_tracker::Chain;
 use std::time::Duration;
-use tokio::time::MissedTickBehavior;
 use tokio::{
     sync::{broadcast::error::RecvError, watch},
     task::JoinHandle,
+    time::MissedTickBehavior,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace, warn};

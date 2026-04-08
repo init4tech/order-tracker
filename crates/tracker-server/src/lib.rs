@@ -32,7 +32,6 @@ pub(crate) mod state;
 /// WebSocket subscription types.
 pub(crate) mod ws;
 
-use std::pin::Pin;
 // Suppress unused crate dependency warnings for crates used only by the binary.
 use git_version as _;
 
@@ -43,18 +42,12 @@ use crate::{
 };
 use eyre::{Result, WrapErr, bail, eyre};
 use init4_bin_base::deps::tracing::{debug, info};
-use std::collections::HashSet;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::watch;
-use tokio::task::JoinError;
+use std::{collections::HashSet, pin::Pin, sync::Arc, time::Duration};
 use tokio::{
     select,
     signal::unix::{SignalKind, signal},
-};
-use tokio::{
-    sync::{broadcast, mpsc},
-    task::JoinHandle,
+    sync::{broadcast, mpsc, watch},
+    task::{JoinError, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};

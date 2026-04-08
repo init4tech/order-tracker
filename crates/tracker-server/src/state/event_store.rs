@@ -1,8 +1,9 @@
 use crate::ingestion::block_watcher::BlockTip;
-use alloy::primitives::B256;
+use alloy::primitives::{B256, keccak256};
+use alloy::sol_types::SolValue;
 use signet_tracker::Chain;
 use signet_zenith::RollupOrders;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// A `Filled` event observed on-chain.
 #[derive(Debug, Clone)]
@@ -20,12 +21,25 @@ pub(crate) struct FilledEvent {
 /// An `Order` (initiation) event observed on the rollup.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct OrderEvent {
+    /// Hash of deadline + outputs, uniquely identifying this order.
+    key: B256,
     /// The rollup block containing the event.
-    pub(crate) block_number: u64,
+    block_number: u64,
     /// The transaction hash of the `initiatePermit2` call.
-    pub(crate) tx_hash: B256,
-    /// The order's deadline as a unix timestamp.
-    pub(crate) deadline: u64,
+    tx_hash: B256,
+}
+
+impl OrderEvent {
+    /// Create a new order event, computing the key from the deadline and outputs.
+    pub(crate) fn new(
+        block_number: u64,
+        tx_hash: B256,
+        deadline: u64,
+        outputs: &[RollupOrders::Output],
+    ) -> Self {
+        let key = order_event_key(deadline, outputs);
+        Self { key, block_number, tx_hash }
+    }
 }
 
 /// Per-chain event storage with independent block tips and pruning.
@@ -62,18 +76,19 @@ impl ChainEvents {
 pub(crate) struct EventStore {
     rollup: ChainEvents,
     host: ChainEvents,
-    /// Order initiation events (rollup-only), keyed by rollup block number.
-    order_events: BTreeMap<u64, Vec<OrderEvent>>,
+    /// Order initiation events (rollup-only), keyed by hash of deadline + outputs.
+    /// Values are `(block_number, tx_hash)`.
+    order_events: HashMap<B256, (u64, B256)>,
     retention_blocks: u64,
 }
 
 impl EventStore {
     /// Create a new event store with the given retention window in blocks.
-    pub(crate) const fn new(retention_blocks: u64) -> Self {
+    pub(crate) fn new(retention_blocks: u64) -> Self {
         Self {
             rollup: ChainEvents::new(),
             host: ChainEvents::new(),
-            order_events: BTreeMap::new(),
+            order_events: HashMap::new(),
             retention_blocks,
         }
     }
@@ -83,7 +98,7 @@ impl EventStore {
         self.rollup.tip = tip.rollup;
         self.rollup.prune(self.retention_blocks);
         let cutoff = self.rollup.tip.saturating_sub(self.retention_blocks);
-        self.order_events = self.order_events.split_off(&cutoff);
+        self.order_events.retain(|_, (block_number, _)| *block_number >= cutoff);
 
         self.host.tip = tip.host;
         self.host.prune(self.retention_blocks);
@@ -99,7 +114,7 @@ impl EventStore {
 
     /// Insert an `Order` (initiation) event (always rollup).
     pub(crate) fn insert_order(&mut self, event: OrderEvent) {
-        self.order_events.entry(event.block_number).or_default().push(event);
+        self.order_events.insert(event.key, (event.block_number, event.tx_hash));
     }
 
     /// Find a `Filled` event whose outputs are a superset of the given expected outputs.
@@ -126,16 +141,14 @@ impl EventStore {
         None
     }
 
-    /// Find the `Order` event matching the given deadline.
-    pub(crate) fn find_order_by_deadline(&self, deadline: u64) -> Option<&OrderEvent> {
-        for events in self.order_events.values().rev() {
-            for event in events {
-                if event.deadline == deadline {
-                    return Some(event);
-                }
-            }
-        }
-        None
+    /// Find the initiation tx hash for an order identified by its deadline and outputs.
+    pub(crate) fn find_order_tx(
+        &self,
+        deadline: u64,
+        outputs: &[RollupOrders::Output],
+    ) -> Option<B256> {
+        let key = order_event_key(deadline, outputs);
+        self.order_events.get(&key).map(|(_, tx_hash)| *tx_hash)
     }
 
     /// Total number of stored filled events across both chains.
@@ -145,6 +158,14 @@ impl EventStore {
 
     /// Total number of stored order events.
     pub(crate) fn order_count(&self) -> usize {
-        self.order_events.values().map(Vec::len).sum()
+        self.order_events.len()
     }
+}
+
+fn order_event_key(deadline: u64, outputs: &[RollupOrders::Output]) -> B256 {
+    let deadline_bytes = deadline.to_ne_bytes();
+    let mut data = Vec::with_capacity(deadline_bytes.len() + outputs.abi_encoded_size());
+    data.extend_from_slice(&deadline_bytes);
+    data.extend(outputs.abi_encode());
+    keccak256(&data)
 }

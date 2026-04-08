@@ -77,6 +77,9 @@ async fn poll_cache(
         }
     }
 
+    // Prune hashes that are no longer in the tx-cache so the set stays bounded.
+    seen_hashes.retain(|hash| current_hashes.contains(hash));
+
     if !new_orders.is_empty() {
         crate::metrics::record_orders_discovered(new_orders.len());
         debug!(count = new_orders.len(), "discovered new orders");

@@ -23,6 +23,7 @@ use signet_tx_cache::TxCache;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::time::Duration;
 use tracing::{debug, info, instrument, warn};
+use url::Url;
 
 /// Type alias for the rollup provider (read-only, no fillers needed).
 pub type RuProvider = RootProvider<Ethereum>;
@@ -48,7 +49,7 @@ pub struct Config {
 
     /// URL of the transaction cache to poll for orders.
     #[from_env(var = "TX_POOL_URL", desc = "URL of the tx pool to poll for orders")]
-    tx_pool_url: url::Url,
+    tx_pool_url: Url,
 
     /// Port for the tracker HTTP server.
     #[from_env(
@@ -78,8 +79,74 @@ impl Init4Config for Config {
     }
 }
 
+/// Builder for [`Config`], allowing programmatic construction without environment variables.
+///
+/// The three required fields (`host_rpc`, `ru_rpc`, `tx_pool_url`) must be provided. All others
+/// have sensible defaults.
+#[derive(Debug)]
+pub struct ConfigBuilder {
+    host_rpc: ProviderConfig,
+    ru_rpc: ProviderConfig,
+    tx_pool_url: Url,
+    port: Option<u16>,
+    constants: SignetSystemConstants,
+    tracing: TracingConfig,
+    metrics: MetricsConfig,
+}
+
+impl ConfigBuilder {
+    /// Creates a new builder with the required config fields. Uses defaults for the others.
+    pub fn new(
+        host_rpc: ProviderConfig,
+        ru_rpc: ProviderConfig,
+        tx_pool_url: Url,
+        constants: SignetSystemConstants,
+    ) -> Self {
+        Self {
+            host_rpc,
+            ru_rpc,
+            tx_pool_url,
+            port: None,
+            constants,
+            tracing: TracingConfig::default(),
+            metrics: MetricsConfig::default(),
+        }
+    }
+
+    /// Sets the HTTP server port.
+    pub const fn with_port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+
+    /// Sets the tracing configuration.
+    pub fn with_tracing(mut self, tracing: TracingConfig) -> Self {
+        self.tracing = tracing;
+        self
+    }
+
+    /// Sets the metrics configuration.
+    pub const fn with_metrics(mut self, metrics: MetricsConfig) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    /// Builds the [`Config`].
+    pub fn build(self) -> Config {
+        Config {
+            host_rpc: self.host_rpc,
+            ru_rpc: self.ru_rpc,
+            tx_pool_url: self.tx_pool_url,
+            port: self.port,
+            constants: self.constants,
+            tracing: self.tracing,
+            metrics: self.metrics,
+        }
+    }
+}
+
 impl Config {
-    /// Port for the tracker HTTP server (defaults to 8080).
+    /// Port for the tracker HTTP server (defaults to 8019).
     pub const fn port(&self) -> u16 {
         match self.port {
             Some(port) => port,

@@ -12,7 +12,7 @@ const PENDING_COLOR: Color = Color::Yellow;
 const FILLED_COLOR: Color = Color::Green;
 const EXPIRED_COLOR: Color = Color::Red;
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
     let [list_area, detail_area, help_area] =
         Layout::vertical([Constraint::Percentage(40), Constraint::Fill(1), Constraint::Length(1)])
             .areas(frame.area());
@@ -22,7 +22,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_help_bar(frame, app, help_area);
 }
 
-fn draw_order_list(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_order_list(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
     let (pending, filled, expired) = app.counts();
     let title = format!(" Orders — {pending} pending │ {filled} filled │ {expired} expired ");
 
@@ -30,7 +30,7 @@ fn draw_order_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .style(Style::default().fg(Color::DarkGray))
         .bottom_margin(1);
 
-    let rows: Vec<Row> = app
+    let rows: Vec<Row<'_>> = app
         .orders()
         .iter()
         .map(|order| {
@@ -56,7 +56,7 @@ fn draw_order_list(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_stateful_widget(table, area, &mut app.table_state);
 }
 
-fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = Block::bordered().title(" Details ");
 
     let Some(order) = app.selected_order() else {
@@ -196,7 +196,7 @@ fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-fn draw_help_bar(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_help_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let (status_text, status_color) =
         if app.connected { ("connected", Color::Green) } else { ("disconnected", Color::Red) };
 
@@ -220,7 +220,7 @@ fn truncate_hash(hash: &str) -> String {
     }
 }
 
-fn status_display(order: &OrderStatus) -> (&'static str, Color) {
+const fn status_display(order: &OrderStatus) -> (&'static str, Color) {
     match order {
         OrderStatus::Pending { .. } => ("PENDING", PENDING_COLOR),
         OrderStatus::Filled { .. } => ("FILLED", FILLED_COLOR),
@@ -246,7 +246,7 @@ fn info_summary(order: &OrderStatus) -> String {
     }
 }
 
-fn maybe_bool_icon(value: MaybeBool) -> &'static str {
+const fn maybe_bool_icon(value: MaybeBool) -> &'static str {
     match value {
         MaybeBool::True => "✓",
         MaybeBool::False => "✗",
@@ -262,6 +262,6 @@ fn maybe_bool_style(value: MaybeBool) -> Style {
     }
 }
 
-fn bool_icon(value: bool) -> (&'static str, Color) {
+const fn bool_icon(value: bool) -> (&'static str, Color) {
     if value { ("✓", Color::Green) } else { ("✗", Color::Red) }
 }

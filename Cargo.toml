@@ -9,6 +9,20 @@ rust-version = "1.88"
 authors = ["init4"]
 license = "Apache-2.0 OR MIT"
 
+[workspace.lints.rust]
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_must_use = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+missing_const_for_fn = "warn"
+
+[workspace.lints.rustdoc]
+all = "warn"
+
 [workspace.dependencies]
 signet-tracker = { path = "crates/tracker" }
 

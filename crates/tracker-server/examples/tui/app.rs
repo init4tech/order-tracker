@@ -1,7 +1,7 @@
 use ratatui::widgets::TableState;
 use signet_tracker::OrderStatus;
 
-pub struct App {
+pub(crate) struct App {
     orders: Vec<OrderStatus>,
     pub table_state: TableState,
     pub running: bool,
@@ -9,7 +9,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             orders: Vec::new(),
             table_state: TableState::default(),
@@ -19,7 +19,7 @@ impl App {
     }
 
     /// Insert or update an order by hash.
-    pub fn update_order(&mut self, status: OrderStatus) {
+    pub(crate) fn update_order(&mut self, status: OrderStatus) {
         let hash = status.order_hash();
         if let Some(pos) = self.orders.iter().position(|order| order.order_hash() == hash) {
             self.orders[pos] = status;
@@ -31,15 +31,15 @@ impl App {
         }
     }
 
-    pub fn orders(&self) -> &[OrderStatus] {
+    pub(crate) fn orders(&self) -> &[OrderStatus] {
         &self.orders
     }
 
-    pub fn selected_order(&self) -> Option<&OrderStatus> {
+    pub(crate) fn selected_order(&self) -> Option<&OrderStatus> {
         self.table_state.selected().and_then(|idx| self.orders.get(idx))
     }
 
-    pub fn select_next(&mut self) {
+    pub(crate) fn select_next(&mut self) {
         if self.orders.is_empty() {
             return;
         }
@@ -50,7 +50,7 @@ impl App {
         self.table_state.select(Some(next));
     }
 
-    pub fn select_prev(&mut self) {
+    pub(crate) const fn select_prev(&mut self) {
         if self.orders.is_empty() {
             return;
         }
@@ -62,7 +62,7 @@ impl App {
     }
 
     /// Returns (pending, filled, expired) counts.
-    pub fn counts(&self) -> (usize, usize, usize) {
+    pub(crate) fn counts(&self) -> (usize, usize, usize) {
         let mut pending = 0;
         let mut filled = 0;
         let mut expired = 0;

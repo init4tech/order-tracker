@@ -1,3 +1,5 @@
+//! Example TUI client for the order tracker WebSocket API.
+
 mod app;
 mod ui;
 

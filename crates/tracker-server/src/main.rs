@@ -1,3 +1,5 @@
+//! Binary entry point for the Signet order tracker server.
+
 use git_version::git_version;
 use init4_bin_base::deps::tracing::{info, info_span};
 use signet_tracker_server::config::env_var_info;

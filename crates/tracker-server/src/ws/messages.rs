@@ -17,11 +17,6 @@ pub(crate) enum StatusFilter {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct OrderFilter {
     /// Only include orders from these owner addresses.
-    /// TODO: implement owner filtering in the WS handler.
-    #[expect(
-        dead_code,
-        reason = "deserialized from client messages, filtering not yet implemented"
-    )]
     #[serde(default)]
     pub(crate) owners: Option<Vec<Address>>,
     /// Only include orders with these statuses.

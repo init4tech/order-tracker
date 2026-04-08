@@ -7,7 +7,10 @@ use crate::{
     order_status::{Chain, FillInfo, FillOutput, OrderStatus},
     token_symbol_cache::TokenSymbolCache,
 };
-use alloy::{primitives::B256, providers::Provider};
+use alloy::{
+    primitives::{Address, B256},
+    providers::Provider,
+};
 use core::pin::pin;
 use futures_util::TryStreamExt;
 use signet_constants::SignetSystemConstants;
@@ -61,17 +64,18 @@ impl<RuP: Provider, HostP: Provider> OrderTracker<RuP, HostP> {
     #[instrument(skip_all, fields(order_hash = %order.order_hash()))]
     pub async fn status_for_order(&self, order: &SignedOrder, is_in_cache: bool) -> OrderStatus {
         let order_hash = *order.order_hash();
+        let owner = order.permit().owner;
         let now = now_unix();
 
         let deadline_check = self.check_deadline(order, now);
         let in_cache = MaybeBool::from(is_in_cache);
         let Ok(nonce_consumed) = self.is_nonce_consumed(order).await else {
-            return self.build_pending_unknown_nonce(order_hash, in_cache, deadline_check);
+            return self.build_pending_unknown_nonce(order_hash, owner, in_cache, deadline_check);
         };
 
         if nonce_consumed {
             let fill_info = self.find_fill(order).await.unwrap_or_default();
-            return OrderStatus::Filled { order_hash, fill_info };
+            return OrderStatus::Filled { order_hash, owner, fill_info };
         }
 
         let now_ts = Timestamp::from(now);
@@ -86,9 +90,9 @@ impl<RuP: Provider, HostP: Provider> OrderTracker<RuP, HostP> {
         };
 
         if deadline_check.deadline.as_secs() < now {
-            OrderStatus::Expired { order_hash, diagnostics }
+            OrderStatus::Expired { order_hash, owner, diagnostics }
         } else {
-            OrderStatus::Pending { order_hash, diagnostics }
+            OrderStatus::Pending { order_hash, owner, diagnostics }
         }
     }
 
@@ -302,12 +306,14 @@ impl<RuP: Provider, HostP: Provider> OrderTracker<RuP, HostP> {
     fn build_pending_unknown_nonce(
         &self,
         order_hash: B256,
+        owner: Address,
         is_in_cache: MaybeBool,
         deadline_check: DeadlineCheck,
     ) -> OrderStatus {
         let now_ts = Timestamp::from(now_unix());
         OrderStatus::Pending {
             order_hash,
+            owner,
             diagnostics: OrderDiagnostics {
                 is_in_cache,
                 deadline_check,

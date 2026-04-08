@@ -11,6 +11,8 @@ pub enum OrderStatus {
     Pending {
         /// The order hash.
         order_hash: B256,
+        /// The order owner (Permit2 signer).
+        owner: Address,
         /// Diagnostics for the order.
         #[serde(flatten)]
         diagnostics: OrderDiagnostics,
@@ -19,6 +21,8 @@ pub enum OrderStatus {
     Filled {
         /// The order hash.
         order_hash: B256,
+        /// The order owner (Permit2 signer).
+        owner: Address,
         /// Details about the fill transaction, if located. `None` if the fill event could not be
         /// correlated to a specific transaction.
         fill_info: Option<FillInfo>,
@@ -27,6 +31,8 @@ pub enum OrderStatus {
     Expired {
         /// The order hash.
         order_hash: B256,
+        /// The order owner (Permit2 signer).
+        owner: Address,
         /// Diagnostics for the order.
         #[serde(flatten)]
         diagnostics: OrderDiagnostics,
@@ -40,6 +46,15 @@ impl OrderStatus {
             Self::Pending { order_hash, .. }
             | Self::Filled { order_hash, .. }
             | Self::Expired { order_hash, .. } => *order_hash,
+        }
+    }
+
+    /// The order owner (Permit2 signer).
+    pub const fn owner(&self) -> Address {
+        match self {
+            Self::Pending { owner, .. }
+            | Self::Filled { owner, .. }
+            | Self::Expired { owner, .. } => *owner,
         }
     }
 
@@ -213,6 +228,7 @@ mod tests {
     fn order_status_pending_roundtrip() {
         assert_json_roundtrip(&OrderStatus::Pending {
             order_hash: B256::ZERO,
+            owner: Address::ZERO,
             diagnostics: sample_diagnostics(),
         });
     }
@@ -221,6 +237,7 @@ mod tests {
     fn order_status_filled_roundtrip() {
         assert_json_roundtrip(&OrderStatus::Filled {
             order_hash: B256::ZERO,
+            owner: Address::ZERO,
             fill_info: Some(FillInfo {
                 block_number: 99,
                 rollup_initiation_tx: Some(B256::ZERO),
@@ -232,13 +249,18 @@ mod tests {
 
     #[test]
     fn order_status_filled_no_info_roundtrip() {
-        assert_json_roundtrip(&OrderStatus::Filled { order_hash: B256::ZERO, fill_info: None });
+        assert_json_roundtrip(&OrderStatus::Filled {
+            order_hash: B256::ZERO,
+            owner: Address::ZERO,
+            fill_info: None,
+        });
     }
 
     #[test]
     fn order_status_expired_roundtrip() {
         assert_json_roundtrip(&OrderStatus::Expired {
             order_hash: B256::ZERO,
+            owner: Address::ZERO,
             diagnostics: sample_diagnostics(),
         });
     }

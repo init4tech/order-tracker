@@ -209,9 +209,10 @@ impl StateManager {
             match self.tracker.is_nonce_consumed(tracked.order()).await {
                 Ok(true) => {
                     info!(order_hash = %hash, "order filled (via event)");
+                    let owner = tracked.order().permit().owner;
                     let fill_info = build_fill_info(&self.event_store, filled, tracked);
                     let status =
-                        OrderStatus::Filled { order_hash: hash, fill_info: Some(fill_info) };
+                        OrderStatus::Filled { order_hash: hash, owner, fill_info: Some(fill_info) };
                     if let Some(tracked) = self.tracked_orders.get_mut(&hash) {
                         tracked.set_status(status.clone());
                     }

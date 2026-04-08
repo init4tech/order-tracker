@@ -54,9 +54,17 @@ WebSocket subscription for all orders. The client may send a JSON filter at any 
 ```
 websocat -E ws://localhost:8019/orders/ws
 ```
-To set a filter for just pending and filled for example:
+The client can send a JSON filter message at any time. Filter by status (`pending`, `filled`, `expired`):
 ```json
 {"statuses": ["pending", "filled"]}
+```
+Filter by owner address:
+```json
+{"owners": ["0x1b97c846b67196658af5c4a0c549892e9f0cf708"]}
+```
+Combine both:
+```json
+{"statuses": ["pending"], "owners": ["0x1b97c846b67196658af5c4a0c549892e9f0cf708"]}
 ```
 
 ---
@@ -76,6 +84,7 @@ Returns `{"status": "ok"}`.
 {
   "status": "pending",
   "order_hash": "0xba9011549e09027404f1dc1ff52e264043127eb916c35430b21e0af7962af68e",
+  "owner": "0x1b97c846b67196658af5c4a0c549892e9f0cf708",
   "is_in_cache": "true",
   "deadline_check": {
     "expires_in": "9m 44s",
@@ -144,6 +153,7 @@ Returns `{"status": "ok"}`.
 {
   "status": "filled",
   "order_hash": "0xba9011549e09027404f1dc1ff52e264043127eb916c35430b21e0af7962af68e",
+  "owner": "0x1b97c846b67196658af5c4a0c549892e9f0cf708",
   "fill_info": {
     "block_number": 702923,
     "rollup_initiation_tx": "0x0e7921a5680474c274c3b1566118cd03757a5f70dea3d26079ca783022d9c0b0",
@@ -186,6 +196,23 @@ Configuration is via environment variables. Run with `-h` or `--help` to see the
 ```
 RUST_LOG=init4=debug,signet=debug,info cargo run -p signet-tracker-server
 ```
+
+## Future Development
+
+### Improve test coverage
+
+- **`signet-tracker-server`** - no tests at all currently. Key areas:
+  - `EventStore` - insert, prune, and lookup logic (including the deadline+outputs keyed order lookups)
+  - `StateManager` - event processing, order lifecycle transitions, fill matching against pending orders
+  - HTTP handlers - error responses for malformed hashes, not-found orders, internal errors
+  - WS handlers - connection lifecycle, filter application, client disconnection
+  - `matches_filter` - status and owner filtering logic
+  - Config parsing and provider connection retry
+- **`signet-tracker`** - the core `OrderTracker` (on-chain queries, diagnostic checks, fill detection) and `TokenSymbolCache` are untested. These would benefit from tests against a mock provider.
+
+### Persistent storage
+
+All state is currently held in memory and lost on restart. Adding persistent storage (e.g. an embedded database) would allow the server to resume tracking across restarts without re-ingesting the full retention window of chain events.
 
 ## License
 

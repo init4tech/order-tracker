@@ -304,7 +304,11 @@ fn matches_filter(status: &OrderStatus, filter: &OrderFilter) -> bool {
         }
     }
 
-    // TODO: owner filtering requires adding owner to OrderStatus or filtering at the state manager.
+    if let Some(owners) = &filter.owners
+        && !owners.contains(&status.owner())
+    {
+        return false;
+    }
 
     true
 }

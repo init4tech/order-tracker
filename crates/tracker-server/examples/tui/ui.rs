@@ -71,10 +71,14 @@ fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
     let accent = Style::default().fg(Color::Cyan);
     let mut lines = Vec::new();
 
-    // Order hash + status header
+    // Order hash + owner + status header
     lines.push(Line::from(vec![
         Span::styled("Order: ", label),
         Span::styled(format!("{}", order.order_hash()), accent),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Owner: ", label),
+        Span::styled(format!("{}", order.owner()), accent),
     ]));
     let (status_str, color) = status_display(order);
     lines.push(Line::from(vec![

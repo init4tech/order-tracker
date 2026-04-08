@@ -247,7 +247,7 @@
             }
 
             let html = `<table class="order-table">
-                <thead><tr><th></th><th>Order Hash</th><th>Status</th><th>Info</th></tr></thead>
+                <thead><tr><th></th><th>Order Hash</th><th>Owner</th><th>Status</th><th>Info</th></tr></thead>
                 <tbody>`;
 
             for (const [hash, order] of orders) {
@@ -255,11 +255,12 @@
                 html += `<tr class="order-row" onclick="toggleExpand('${esc(hash)}')">
                     <td><span class="expand-icon ${isOpen ? 'open' : ''}">&#x25B8;</span></td>
                     <td><span class="hash">${truncHash(hash)}</span></td>
+                    <td><span class="hash">${truncHash(order.owner)}</span></td>
                     <td><span class="status-badge ${order.status}">${order.status}</span></td>
                     <td>${infoSummary(order)}</td>
                 </tr>
                 <tr class="detail-row ${isOpen ? 'expanded' : ''}">
-                    <td colspan="4"><div class="detail-content">${details(order)}</div></td>
+                    <td colspan="5"><div class="detail-content">${details(order)}</div></td>
                 </tr>`;
             }
 
@@ -291,7 +292,8 @@
 
         function details(order) {
             let html = `<div class="detail-section">
-                <strong>Order Hash:</strong> <span class="hash">${esc(order.order_hash)}</span>
+                <strong>Order Hash:</strong> <span class="hash">${esc(order.order_hash)}</span><br>
+                <strong>Owner:</strong> <span class="hash">${esc(order.owner)}</span>
             </div>`;
 
             if (order.status === 'pending' || order.status === 'expired') {

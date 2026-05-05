@@ -14,7 +14,7 @@ use alloy::{
 use core::pin::pin;
 use futures_util::TryStreamExt;
 use signet_constants::SignetSystemConstants;
-use signet_orders::permit2;
+use signet_orders::{OrderStreamExt, permit2};
 use signet_tx_cache::TxCache;
 use signet_types::SignedOrder;
 use std::time::Duration;
@@ -275,13 +275,12 @@ impl<RuP: Provider, HostP: Provider> OrderTracker<RuP, HostP> {
     /// Fetch a specific order from the tx-cache by its hash.
     #[instrument(skip_all, fields(%order_hash))]
     async fn fetch_order(&self, order_hash: B256) -> Result<SignedOrder, Error> {
-        let mut stream = pin!(self.tx_cache.stream_orders());
-        while let Some(order) = stream.try_next().await.map_err(Error::TxCache)? {
-            if *order.order_hash() == order_hash {
-                return Ok(order);
-            }
-        }
-        Err(Error::OrderNotFound(order_hash))
+        let mut stream = pin!(
+            self.tx_cache
+                .stream_orders()
+                .filter_orders(move |order| *order.order_hash() == order_hash)
+        );
+        stream.try_next().await.map_err(Error::TxCache)?.ok_or(Error::OrderNotFound(order_hash))
     }
 
     fn resolve_chain_id(&self, chain_id: u32) -> Chain {

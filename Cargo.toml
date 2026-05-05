@@ -26,11 +26,11 @@ all = "warn"
 [workspace.dependencies]
 signet-tracker = { path = "crates/tracker" }
 
-signet-constants = "0.16.2"
-signet-orders = "0.16.2"
-signet-tx-cache = "0.16.2"
-signet-types = "0.16.2"
-signet-zenith = "0.16.2"
+signet-constants = "0.16.3"
+signet-orders = "0.16.3"
+signet-tx-cache = "0.16.3"
+signet-types = "0.16.3"
+signet-zenith = "0.16.3"
 init4-bin-base = "0.19.0"
 
 alloy = { version = "1.8.3", features = ["full"] }
@@ -48,3 +48,12 @@ tokio = { version = "1.51.0", features = ["full", "macros", "rt-multi-thread", "
 tokio-util = "0.7.18"
 tracing = "0.1.44"
 url = "2.5.8"
+
+# SDK override - point signet crates at the in-flight stream-combinators branch
+# so we can use the new helpers ahead of a release.
+[patch.crates-io]
+signet-constants = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
+signet-orders = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
+signet-tx-cache = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
+signet-types = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
+signet-zenith = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }

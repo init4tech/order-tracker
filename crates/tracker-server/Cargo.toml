@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 signet-tracker.workspace = true
 signet-constants.workspace = true
+signet-orders.workspace = true
 signet-tx-cache.workspace = true
 signet-types.workspace = true
 signet-zenith.workspace = true

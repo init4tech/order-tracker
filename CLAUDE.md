@@ -59,6 +59,7 @@ crates/tracker-server/ - signet-tracker-server: HTTP/WS API server (lib + bin)
 
 ### signet-tracker-server (API server)
 - **signet-tracker**: The tracking library
+- **signet-orders**: `OrderStreamExt::filter_orders` for filtering tx-cache order streams
 - **init4-bin-base**: Config loading (FromEnv derive), tracing/metrics init, provider config types
 - **alloy**: RPC providers (HTTP + WS)
 - **axum**: HTTP + WebSocket server

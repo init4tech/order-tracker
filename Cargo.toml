@@ -48,12 +48,3 @@ tokio = { version = "1.51.0", features = ["full", "macros", "rt-multi-thread", "
 tokio-util = "0.7.18"
 tracing = "0.1.44"
 url = "2.5.8"
-
-# SDK override - point signet crates at the in-flight stream-combinators branch
-# so we can use the new helpers ahead of a release.
-[patch.crates-io]
-signet-constants = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
-signet-orders = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
-signet-tx-cache = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
-signet-types = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }
-signet-zenith = { git = "https://github.com/init4tech/signet-sdk.git", branch = "fraser/eng-1789/stream-combinators" }

@@ -14,6 +14,7 @@ use axum::{
 };
 use core::pin::pin;
 use futures_util::{SinkExt, StreamExt, TryStreamExt, stream::SplitSink};
+use signet_orders::OrderStreamExt;
 use signet_tracker::OrderStatus;
 use std::sync::Arc;
 use tokio::sync::{broadcast::error::RecvError, oneshot};
@@ -47,15 +48,13 @@ async fn handle_single_order(socket: WebSocket, state: Arc<AppState>, order_hash
 
     // Look up the order in the tx-cache.
     let order = {
-        let mut stream = pin!(state.tx_cache.stream_orders());
-        let mut found = None;
-        while let Ok(Some(order)) = stream.try_next().await {
-            if *order.order_hash() == order_hash {
-                found = Some(order);
-                break;
-            }
-        }
-        found
+        let mut stream = pin!(
+            state
+                .tx_cache
+                .stream_orders()
+                .filter_orders(move |order| *order.order_hash() == order_hash)
+        );
+        stream.try_next().await.ok().flatten()
     };
 
     let Some(order) = order else {

@@ -2,6 +2,7 @@ use crate::handle_task_exit;
 use alloy::primitives::B256;
 use eyre::WrapErr;
 use futures_util::TryStreamExt;
+use signet_orders::OrderStreamExt;
 use signet_tx_cache::TxCache;
 use signet_types::SignedOrder;
 use std::collections::HashSet;
@@ -65,17 +66,16 @@ async fn poll_cache(
     tx_cache: &TxCache,
     seen_hashes: &mut HashSet<B256>,
 ) -> Result<(Vec<SignedOrder>, HashSet<B256>), signet_tx_cache::TxCacheError> {
-    let mut new_orders = Vec::new();
     let mut current_hashes = HashSet::new();
-
-    let mut stream = core::pin::pin!(tx_cache.stream_orders());
-    while let Some(order) = stream.try_next().await? {
-        let hash = *order.order_hash();
-        current_hashes.insert(hash);
-        if seen_hashes.insert(hash) {
-            new_orders.push(order);
-        }
-    }
+    let new_orders: Vec<SignedOrder> = tx_cache
+        .stream_orders()
+        .filter_orders(|order| {
+            let hash = *order.order_hash();
+            current_hashes.insert(hash);
+            seen_hashes.insert(hash)
+        })
+        .try_collect()
+        .await?;
 
     // Prune hashes that are no longer in the tx-cache so the set stays bounded.
     seen_hashes.retain(|hash| current_hashes.contains(hash));
